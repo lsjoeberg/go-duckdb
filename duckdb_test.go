@@ -742,9 +742,9 @@ func TestArrow(t *testing.T) {
 	ch := make(chan arrow.Record)
 	var records []arrow.Record
 	var qErr error
-	go func() {
-		qErr = arrowQuery.QueryContext(context.Background(), `SELECT 1`, ch)
-	}()
+	go func(err error) {
+		err = arrowQuery.QueryContext(context.Background(), `SELECT 1`, ch)
+	}(qErr)
 
 	for record := range ch {
 		records = append(records, record)
@@ -776,9 +776,9 @@ func BenchmarkArrow(b *testing.B) {
 	for i := 0; i < b.N; i++ {
 		fmt.Printf("Running iteration %d\n", i)
 		ch := make(chan arrow.Record, 1)
-		go func() {
-			qErr = arrowQuery.QueryContext(context.Background(), `SELECT 1`, ch)
-		}()
+		go func(err error) {
+			err = arrowQuery.QueryContext(context.Background(), `SELECT 1`, ch)
+		}(qErr)
 		record := <-ch
 		require.NoError(b, qErr)
 		record.Release()
@@ -799,9 +799,9 @@ func TestMultipleArrowRecords(t *testing.T) {
 	ch := make(chan arrow.Record)
 	var records []arrow.Record
 	var qErr error
-	go func() {
-		qErr = arrowQuery.QueryContext(context.Background(), `SELECT i FROM integers ORDER BY i ASC`, ch)
-	}()
+	go func(err error) {
+		err = arrowQuery.QueryContext(context.Background(), `SELECT i FROM integers ORDER BY i ASC`, ch)
+	}(qErr)
 
 	for record := range ch {
 		records = append(records, record)
@@ -829,9 +829,9 @@ func TestEmptyArrow(t *testing.T) {
 	ch := make(chan arrow.Record)
 	var records []arrow.Record
 	var qErr error
-	go func() {
-		qErr = arrowQuery.QueryContext(context.Background(), `SELECT 1 WHERE 1 = 0`, ch)
-	}()
+	go func(err error) {
+		err = arrowQuery.QueryContext(context.Background(), `SELECT 1 WHERE 1 = 0`, ch)
+	}(qErr)
 
 	for record := range ch {
 		records = append(records, record)
