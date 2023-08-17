@@ -33,7 +33,9 @@ func (c *conn) CheckNamedValue(nv *driver.NamedValue) error {
 	return driver.ErrSkip
 }
 
-func (c *conn) QueryArrowContext(ctx context.Context, query string) ([]arrow.Record, error) {
+func (c *conn) QueryArrowContext(ctx context.Context, query string, ch chan arrow.Record) error {
+	defer close(ch)
+
 	cquery := C.CString(query)
 	defer C.free(unsafe.Pointer(cquery))
 
@@ -44,7 +46,7 @@ func (c *conn) QueryArrowContext(ctx context.Context, query string) ([]arrow.Rec
 		dbErr := C.GoString(C.duckdb_query_arrow_error(*pDuckdbArrow))
 		C.duckdb_destroy_arrow(pDuckdbArrow)
 		C.free(duckdbArrowPtr)
-		return nil, errors.New(dbErr)
+		return errors.New(dbErr)
 	}
 	defer func() {
 		C.duckdb_destroy_arrow(pDuckdbArrow)
@@ -56,16 +58,16 @@ func (c *conn) QueryArrowContext(ctx context.Context, query string) ([]arrow.Rec
 	pArrowSchema := (C.duckdb_arrow_schema)(arrowSchema)
 	if state := C.duckdb_query_arrow_schema(*pDuckdbArrow, &pArrowSchema); state == C.DuckDBError {
 		dbErr := C.GoString(C.duckdb_query_arrow_error(*pDuckdbArrow))
-		return nil, errors.New(dbErr)
+		return errors.New(dbErr)
 	}
 	arrSchema := (*cdata.CArrowSchema)(unsafe.Pointer(pArrowSchema))
 
 	schema, err := cdata.ImportCArrowSchema(arrSchema)
 	if err != nil {
-		return nil, err
+		return err
 	}
 
-	var records []arrow.Record
+	var nRecords int64 = 0
 
 	for {
 		var duckDbArrowArray = C.calloc(1, C.sizeof_struct_ArrowArray)
@@ -75,15 +77,16 @@ func (c *conn) QueryArrowContext(ctx context.Context, query string) ([]arrow.Rec
 		if state == C.DuckDBError {
 			dbErr := C.GoString(C.duckdb_query_arrow_error(*pDuckdbArrow))
 			C.free(duckDbArrowArray)
-			return nil, errors.New(dbErr)
+			return errors.New(dbErr)
 		}
 
 		arrData := (*C.struct_ArrowArray)(unsafe.Pointer(duckDbArrowArray))
 
 		if arrData.length == 0 {
 			C.free(duckDbArrowArray)
-			if len(records) == 0 {
-				return []arrow.Record{array.NewRecord(schema, nil, 0)}, nil
+			if nRecords == 0 {
+				ch <- array.NewRecord(schema, nil, 0)
+				return nil
 			}
 			break
 		}
@@ -92,14 +95,15 @@ func (c *conn) QueryArrowContext(ctx context.Context, query string) ([]arrow.Rec
 		record, err := cdata.ImportCRecordBatchWithSchema(cDataArrData, schema)
 		if err != nil {
 			C.free(duckDbArrowArray)
-			return nil, err
+			return err
 		}
 
-		records = append(records, record)
+		ch <- record
+		nRecords++
 		C.free(duckDbArrowArray)
 	}
 
-	return records, nil
+	return nil
 }
 
 func (c *conn) ExecContext(ctx context.Context, query string, args []driver.NamedValue) (driver.Result, error) {
