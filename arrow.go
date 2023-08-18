@@ -42,11 +42,10 @@ func NewArrowQueryFromDb(ctx context.Context, db *sql.DB) (*ArrowQuery, error) {
 	return &ArrowQuery{db: db}, nil
 }
 
-func (aq *ArrowQuery) QueryContext(ctx context.Context, query string) ([]arrow.Record, error) {
-	var results []arrow.Record
+func (aq *ArrowQuery) QueryContext(ctx context.Context, query string, ch chan<- arrow.Record) error {
 	sqlConn, err := aq.db.Conn(ctx)
 	if err != nil {
-		return nil, err
+		return err
 	}
 	defer sqlConn.Close()
 	err = sqlConn.Raw(func(driverConn any) error {
@@ -57,10 +56,11 @@ func (aq *ArrowQuery) QueryContext(ctx context.Context, query string) ([]arrow.R
 		if dbConn.closed {
 			return fmt.Errorf("database/sql/driver: misuse of duckdb driver: ArrowQuery after Close")
 		}
+
 		var err error
-		results, err = dbConn.QueryArrowContext(ctx, query)
+		err = dbConn.QueryArrowContext(ctx, query, ch)
 		return err
 	})
 
-	return results, err
+	return err
 }

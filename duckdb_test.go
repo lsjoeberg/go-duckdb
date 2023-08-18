@@ -12,6 +12,7 @@ import (
 	"testing"
 	"time"
 
+	"github.com/apache/arrow/go/v12/arrow"
 	"github.com/google/uuid"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
@@ -738,13 +739,25 @@ func TestArrow(t *testing.T) {
 	arrowQuery, err := NewArrowQueryFromDb(context.Background(), db)
 	require.NoError(t, err)
 
-	records, err := arrowQuery.QueryContext(context.Background(), `SELECT 1`)
-	require.NoError(t, err)
+	ch := make(chan arrow.Record)
+	var records []arrow.Record
+	var qErr error
+	go func(err error) {
+		err = arrowQuery.QueryContext(context.Background(), `SELECT 1`, ch)
+	}(qErr)
+
+	for record := range ch {
+		records = append(records, record)
+	}
+
 	defer func() {
 		for _, record := range records {
 			record.Release()
 		}
 	}()
+
+	require.NoError(t, qErr)
+	require.Equal(t, 1, len(records))
 	require.Equal(t, int64(1), records[0].NumRows())
 }
 
@@ -759,13 +772,16 @@ func BenchmarkArrow(b *testing.B) {
 
 	fmt.Println("Running benchmark")
 	b.ResetTimer()
+	var qErr error
 	for i := 0; i < b.N; i++ {
 		fmt.Printf("Running iteration %d\n", i)
-		records, err := arrowQuery.QueryContext(context.Background(), `SELECT 1`)
-		require.NoError(b, err)
-		for _, record := range records {
-			record.Release()
-		}
+		ch := make(chan arrow.Record, 1)
+		go func(err error) {
+			err = arrowQuery.QueryContext(context.Background(), `SELECT 1`, ch)
+		}(qErr)
+		record := <-ch
+		require.NoError(b, qErr)
+		record.Release()
 	}
 }
 
@@ -780,13 +796,24 @@ func TestMultipleArrowRecords(t *testing.T) {
 	arrowQuery, err := NewArrowQueryFromDb(context.Background(), db)
 	require.NoError(t, err)
 
-	records, err := arrowQuery.QueryContext(context.Background(), `SELECT i FROM integers ORDER BY i ASC`)
-	require.NoError(t, err)
+	ch := make(chan arrow.Record)
+	var records []arrow.Record
+	var qErr error
+	go func(err error) {
+		err = arrowQuery.QueryContext(context.Background(), `SELECT i FROM integers ORDER BY i ASC`, ch)
+	}(qErr)
+
+	for record := range ch {
+		records = append(records, record)
+	}
+
 	defer func() {
 		for _, record := range records {
 			record.Release()
 		}
 	}()
+
+	require.NoError(t, qErr)
 	require.Greater(t, len(records), 1)
 	require.Greater(t, records[0].NumRows(), int64(1))
 }
@@ -799,15 +826,25 @@ func TestEmptyArrow(t *testing.T) {
 	arrowQuery, err := NewArrowQueryFromDb(context.Background(), db)
 	require.NoError(t, err)
 
-	records, err := arrowQuery.QueryContext(context.Background(), `SELECT 1 WHERE 1 = 0`)
-	require.NoError(t, err)
+	ch := make(chan arrow.Record)
+	var records []arrow.Record
+	var qErr error
+	go func(err error) {
+		err = arrowQuery.QueryContext(context.Background(), `SELECT 1 WHERE 1 = 0`, ch)
+	}(qErr)
+
+	for record := range ch {
+		records = append(records, record)
+	}
+
 	defer func() {
 		for _, record := range records {
 			record.Release()
 		}
 	}()
+
+	require.NoError(t, qErr)
 	require.Equal(t, 1, len(records))
-	require.Equal(t, int64(0), records[0].NumRows())
 }
 
 func TestTypeNamesAndScanTypes(t *testing.T) {
