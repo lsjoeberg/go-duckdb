@@ -33,7 +33,7 @@ func (c *conn) CheckNamedValue(nv *driver.NamedValue) error {
 	return driver.ErrSkip
 }
 
-func (c *conn) QueryArrowContext(ctx context.Context, query string, ch chan arrow.Record) error {
+func (c *conn) QueryArrowContext(ctx context.Context, query string, ch chan<- arrow.Record) error {
 	defer close(ch)
 
 	cquery := C.CString(query)

@@ -42,7 +42,7 @@ func NewArrowQueryFromDb(ctx context.Context, db *sql.DB) (*ArrowQuery, error) {
 	return &ArrowQuery{db: db}, nil
 }
 
-func (aq *ArrowQuery) QueryContext(ctx context.Context, query string, ch chan arrow.Record) error {
+func (aq *ArrowQuery) QueryContext(ctx context.Context, query string, ch chan<- arrow.Record) error {
 	sqlConn, err := aq.db.Conn(ctx)
 	if err != nil {
 		return err
